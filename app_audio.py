@@ -9,16 +9,16 @@ session = ort.InferenceSession("model_audio_emotion.onnx")
 
 EMOTIONS = ["Neutral", "Happy", "Sad", "Angry", "Fear", "Disgust", "Surprise"]
 
-def convert_m4a_to_mp3(input_path, output_path="converted.mp3"):
-    """Cloud で最も安定する m4a → mp3 変換"""
+def convert_to_pcm(input_path, output_path="converted.pcm"):
+    """Cloud で最も安定する音声変換：RAW PCM にする"""
     try:
         subprocess.run(
             [
                 "ffmpeg", "-y",
                 "-i", input_path,
-                "-acodec", "libmp3lame",
-                "-ar", "16000",
-                "-ac", "1",
+                "-f", "s16le",   # RAW PCM
+                "-ac", "1",      # モノラル
+                "-ar", "16000",  # サンプリングレート
                 output_path
             ],
             stdout=subprocess.PIPE,
@@ -30,13 +30,16 @@ def convert_m4a_to_mp3(input_path, output_path="converted.mp3"):
         st.error(f"音声変換に失敗しました: {e}")
         return None
 
-def load_audio(path):
-    """mp3 / wav を librosa で読み込む（Cloud で安定）"""
-    y, sr = librosa.load(path, sr=None)
-    return y, sr
+def load_pcm(path):
+    """RAW PCM を numpy で読み込む（librosa.load を使わない）"""
+    data = np.fromfile(path, dtype=np.int16).astype(np.float32)
+    if len(data) == 0:
+        raise ValueError("PCM データが空です")
+    data /= np.max(np.abs(data))  # 正規化
+    return data, 16000
 
 def predict_emotion(path):
-    y, sr = load_audio(path)
+    y, sr = load_pcm(path)
 
     mel = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=40)
     mel_db = librosa.power_to_db(mel, ref=np.max)
@@ -62,20 +65,14 @@ if uploaded_file is not None:
     with open(raw_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
 
-    ext = uploaded_file.name.split(".")[-1].lower()
+    pcm_path = convert_to_pcm(raw_path)
 
-    if ext == "m4a":
-        mp3_path = convert_m4a_to_mp3(raw_path)
-        wav_path = mp3_path
-    else:
-        wav_path = raw_path
-
-    if wav_path:
+    if pcm_path:
         st.audio(uploaded_file)
-        emotion = predict_emotion(wav_path)
+        emotion = predict_emotion(pcm_path)
         st.success(f"判定された感情: **{emotion}**")
 
     if os.path.exists(raw_path):
         os.remove(raw_path)
-    if os.path.exists("converted.mp3"):
-        os.remove("converted.mp3")
+    if os.path.exists("converted.pcm"):
+        os.remove("converted.pcm")
