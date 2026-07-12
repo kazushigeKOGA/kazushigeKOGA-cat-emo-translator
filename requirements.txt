@@ -3,3 +3,5 @@ numpy
 onnxruntime
 librosa
 Pillow
+pydub
+ffmpeg
