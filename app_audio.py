@@ -1,40 +1,26 @@
 import streamlit as st
 import numpy as np
 import librosa
-from scipy.ndimage import zoom
 import onnxruntime as ort
 
-# ONNXモデル読み込み
 session = ort.InferenceSession("model_audio_emotion.onnx")
 
 EMOTIONS = ["Neutral", "Happy", "Sad", "Angry", "Fear", "Disgust", "Surprise"]
 
 def predict_emotion(path):
-    # 音声読み込み
     y, sr = librosa.load(path, sr=None)
-    
-    # メルスペクトログラム
+
+    # メルスペクトログラム（縦40は固定）
     mel = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=40)
     mel_db = librosa.power_to_db(mel, ref=np.max)
-    
-    # Cloud で mel の形がズレるので補間で 40×40 に変換
-    h, w = mel_db.shape
-    
-    # 極端な倍率を防ぐために正規化
-    scale_h = 40 / h
-    scale_w = 40 / w
 
-    # 補間（interpolation）
-    mel_db = zoom(mel_db, (scale_h, scale_w))
+    # 横方向（時間軸）だけを40に固定する
+    # → 特徴量が壊れない
+    mel_db = librosa.util.fix_length(mel_db, size=40, axis=1)
 
-    # 万が一ズレた場合の最終補正
-    mel_db = mel_db[:40, :40]
-    mel_db = np.pad(mel_db, ((0, max(0, 40 - mel_db.shape[0])),
-                             (0, max(0, 40 - mel_db.shape[1]))))
-    
+    # 縦方向はすでに40なのでそのまま
     mel_db = mel_db.reshape(1, 1, 40, 40).astype(np.float32)
 
-    # 推論
     inputs = {session.get_inputs()[0].name: mel_db}
     outputs = session.run(None, inputs)
     pred = np.argmax(outputs[0])
@@ -43,7 +29,7 @@ def predict_emotion(path):
 
 st.title("🎤 音声感情認識（ONNX版 / Streamlit Cloud対応）")
 
-uploaded_file = st.file_uploader("音声ファイルをアップロードしてください（wav）", type=["wav"])
+uploaded_file = st.file_uploader("音声ファイルをアップロードしてください（wav）", type=["wav", "m4a"])
 
 if uploaded_file is not None:
     with open("uploaded.wav", "wb") as f:
