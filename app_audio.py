@@ -3,20 +3,20 @@ import numpy as np
 import librosa
 import onnxruntime as ort
 import wave
+import os
 
 session = ort.InferenceSession("model_audio_emotion.onnx")
 
 EMOTIONS = ["Neutral", "Happy", "Sad", "Angry", "Fear", "Disgust", "Surprise"]
 
 def load_wav(path):
-    """Python 標準 wave で WAV を読み込む（Cloud で唯一安定）"""
     with wave.open(path, "rb") as wf:
         sr = wf.getframerate()
         n = wf.getnframes()
         audio = wf.readframes(n)
 
     y = np.frombuffer(audio, dtype=np.int16).astype(np.float32)
-    y /= np.max(np.abs(y))  # 正規化
+    y /= np.max(np.abs(y))
     return y, sr
 
 def predict_emotion(path):
