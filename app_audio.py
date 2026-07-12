@@ -2,7 +2,7 @@ import streamlit as st
 import numpy as np
 import librosa
 import onnxruntime as ort
-import subprocess
+from pydub import AudioSegment
 import os
 
 session = ort.InferenceSession("model_audio_emotion.onnx")
@@ -11,22 +11,12 @@ EMOTIONS = ["Neutral", "Happy", "Sad", "Angry", "Fear", "Disgust", "Surprise"]
 
 def convert_to_wav(input_path, output_path="converted.wav"):
     """
-    m4a / mp3 / その他 → wav に変換する
-    Cloud では wav のフォーマット指定が必須
+    Cloud で最も安定する m4a → wav 変換
+    ffmpeg ではなく pydub を使う
     """
     try:
-        subprocess.run(
-            [
-                "ffmpeg", "-y",
-                "-i", input_path,
-                "-acodec", "pcm_s16le",   # ★ WAV の形式を明示
-                "-ar", "44100",           # ★ サンプリングレート指定
-                output_path
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True
-        )
+        audio = AudioSegment.from_file(input_path)
+        audio.export(output_path, format="wav")
         return output_path
     except Exception as e:
         st.error(f"音声変換に失敗しました: {e}")
