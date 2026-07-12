@@ -1,6 +1,7 @@
 import streamlit as st
 import numpy as np
 import librosa
+from scipy.ndimage import zoom
 import onnxruntime as ort
 
 # ONNXモデル読み込み
@@ -17,8 +18,9 @@ def predict_emotion(path):
     mel_db = librosa.power_to_db(mel, ref=np.max)
     
     # ONNX入力形式に変換
-    # ★ librosa.fix_length は Cloud で壊れるので NumPy で強制リサイズ
-    mel_db = np.resize(mel_db, (40, 40))
+    # ★ Cloud で mel の形がズレるので補間で 40×40 に変換
+    h, w = mel_db.shape
+    mel_db = zoom(mel_db, (40/h, 40/w))
 
     mel_db = mel_db.reshape(1, 1, 40, 40).astype(np.float32)
 
