@@ -1,8 +1,5 @@
 streamlit
-gradio
-
---extra-index-url https://download.pytorch.org/whl/cpu
-
-transformers
-huggingface_hub
+numpy
+onnxruntime
+librosa
 Pillow
