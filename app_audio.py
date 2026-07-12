@@ -1,9 +1,9 @@
 import streamlit as st
 import numpy as np
-import librosa
 import onnxruntime as ort
 import wave
 import os
+from scipy.signal import stft
 
 session = ort.InferenceSession("model_audio_emotion.onnx")
 
@@ -19,13 +19,54 @@ def load_wav(path):
     y /= np.max(np.abs(y))
     return y, sr
 
+def mel_filterbank(sr, n_fft=512, n_mels=40):
+    # メルフィルタバンクを自前で作成
+    fmin, fmax = 0, sr / 2
+    mel_min = 2595 * np.log10(1 + fmin / 700)
+    mel_max = 2595 * np.log10(1 + fmax / 700)
+
+    mel_points = np.linspace(mel_min, mel_max, n_mels + 2)
+    hz_points = 700 * (10**(mel_points / 2595) - 1)
+
+    bins = np.floor((n_fft + 1) * hz_points / sr).astype(int)
+
+    fb = np.zeros((n_mels, n_fft // 2 + 1))
+    for m in range(1, n_mels + 1):
+        f_left = bins[m - 1]
+        f_center = bins[m]
+        f_right = bins[m + 1]
+
+        for k in range(f_left, f_center):
+            fb[m - 1, k] = (k - f_left) / (f_center - f_left)
+        for k in range(f_center, f_right):
+            fb[m - 1, k] = (f_right - k) / (f_right - f_center)
+
+    return fb
+
+def compute_mel(y, sr):
+    # STFT
+    f, t, Zxx = stft(y, sr, nperseg=512)
+    S = np.abs(Zxx)
+
+    # メルフィルタバンク
+    fb = mel_filterbank(sr, n_fft=512, n_mels=40)
+
+    mel = np.dot(fb, S)
+
+    # 対数
+    mel_db = np.log10(mel + 1e-6)
+
+    # 時間方向を40に固定
+    mel_db = mel_db[:, :40]
+    mel_db = np.pad(mel_db, ((0, 0), (0, max(0, 40 - mel_db.shape[1]))))
+
+    return mel_db
+
 def predict_emotion(path):
     y, sr = load_wav(path)
 
-    mel = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=40)
-    mel_db = librosa.power_to_db(mel, ref=np.max)
+    mel_db = compute_mel(y, sr)
 
-    mel_db = librosa.util.fix_length(mel_db, size=40, axis=1)
     mel_db = mel_db.reshape(1, 1, 40, 40).astype(np.float32)
 
     inputs = {session.get_inputs()[0].name: mel_db}
