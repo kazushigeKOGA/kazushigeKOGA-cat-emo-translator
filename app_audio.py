@@ -17,11 +17,21 @@ def predict_emotion(path):
     mel = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=40)
     mel_db = librosa.power_to_db(mel, ref=np.max)
     
-    # ONNX入力形式に変換
-    # ★ Cloud で mel の形がズレるので補間で 40×40 に変換
+    # Cloud で mel の形がズレるので補間で 40×40 に変換
     h, w = mel_db.shape
-    mel_db = zoom(mel_db, (40/h, 40/w))
+    
+    # 極端な倍率を防ぐために正規化
+    scale_h = 40 / h
+    scale_w = 40 / w
 
+    # 補間（interpolation）
+    mel_db = zoom(mel_db, (scale_h, scale_w))
+
+    # 万が一ズレた場合の最終補正
+    mel_db = mel_db[:40, :40]
+    mel_db = np.pad(mel_db, ((0, max(0, 40 - mel_db.shape[0])),
+                             (0, max(0, 40 - mel_db.shape[1]))))
+    
     mel_db = mel_db.reshape(1, 1, 40, 40).astype(np.float32)
 
     # 推論
