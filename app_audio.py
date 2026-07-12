@@ -8,23 +8,23 @@ session = ort.InferenceSession("model_audio_emotion.onnx")
 
 EMOTIONS = ["Neutral", "Happy", "Sad", "Angry", "Fear", "Disgust", "Surprise"]
 
-def predict_emotion(audio_path):
+def predict_emotion(path):
     # 音声読み込み
-    y, sr = librosa.load(audio_path, sr=None)
+    y, sr = librosa.load(path, sr=None)
     
     # メルスペクトログラム
-    mel = librosa.feature.melspectrogram(y=y, sr=sr)
-    mel_db = librosa.power_to_db(mel)
+    # ★ Cloud で mel_db のサイズがズレるので強制リサイズ
+    mel_db = librosa.util.fix_length(mel_db, size=40, axis=0)
+    mel_db = librosa.util.fix_length(mel_db, size=40, axis=1)
     
     # ONNX入力形式に変換
-    mel_db = mel_db.astype(np.float32)
-    mel_db = mel_db.reshape(1, 1, mel_db.shape[0], mel_db.shape[1])
+    mel_db = mel_db.reshape(1, 1, 40, 40).astype(np.float32)
 
     # 推論
     inputs = {session.get_inputs()[0].name: mel_db}
     outputs = session.run(None, inputs)
     pred = np.argmax(outputs[0])
-
+    
     return EMOTIONS[pred]
 
 st.title("🎤 音声感情認識（ONNX版 / Streamlit Cloud対応）")
