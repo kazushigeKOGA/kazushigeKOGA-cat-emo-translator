@@ -13,7 +13,8 @@ torch.onnx.export(
     "model_audio_emotion.onnx",
     input_names=["input"],
     output_names=["output"],
-    opset_version=11
+    opset_version=10,   # ★ここを10にする
+    do_constant_folding=True
 )
 
 print("ONNX model saved as model_audio_emotion.onnx")
