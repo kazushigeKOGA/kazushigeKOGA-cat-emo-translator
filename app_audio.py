@@ -9,11 +9,18 @@ session = ort.InferenceSession("model_audio_emotion.onnx")
 
 EMOTIONS = ["Neutral", "Happy", "Sad", "Angry", "Fear", "Disgust", "Surprise"]
 
+def load_audio_with_pydub(path):
+    """pydub で音声を読み込み numpy に変換（Cloud で最も安定）"""
+    audio = AudioSegment.from_file(path)
+    audio = audio.set_channels(1)        # モノラル
+    audio = audio.set_frame_rate(16000)  # サンプリングレート固定
+
+    samples = np.array(audio.get_array_of_samples()).astype(np.float32)
+    samples = samples / np.max(np.abs(samples))  # 正規化
+    return samples, 16000
+
 def convert_to_wav(input_path, output_path="converted.wav"):
-    """
-    Cloud で最も安定する m4a → wav 変換
-    ffmpeg ではなく pydub を使う
-    """
+    """m4a / mp3 / その他 → wav に変換（pydub が内部で ffmpeg を使う）"""
     try:
         audio = AudioSegment.from_file(input_path)
         audio.export(output_path, format="wav")
@@ -23,12 +30,16 @@ def convert_to_wav(input_path, output_path="converted.wav"):
         return None
 
 def predict_emotion(path):
-    y, sr = librosa.load(path, sr=None)
+    # librosa.load を使わず pydub で読み込む
+    y, sr = load_audio_with_pydub(path)
 
+    # メルスペクトログラム
     mel = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=40)
     mel_db = librosa.power_to_db(mel, ref=np.max)
 
+    # 横方向（時間軸）だけ40に固定
     mel_db = librosa.util.fix_length(mel_db, size=40, axis=1)
+
     mel_db = mel_db.reshape(1, 1, 40, 40).astype(np.float32)
 
     inputs = {session.get_inputs()[0].name: mel_db}
