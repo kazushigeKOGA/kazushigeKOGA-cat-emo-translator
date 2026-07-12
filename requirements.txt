@@ -1,4 +1,6 @@
 streamlit
+gradio
+
 torch==2.2.0+cpu
 torchvision==0.17.0+cpu
 torchaudio==2.2.0+cpu
@@ -7,3 +9,4 @@ torchaudio==2.2.0+cpu
 transformers
 huggingface_hub
 Pillow
+
