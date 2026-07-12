@@ -13,18 +13,20 @@ def predict_emotion(path):
     y, sr = librosa.load(path, sr=None)
     
     # メルスペクトログラム
-    # ★ Cloud で mel_db のサイズがズレるので強制リサイズ
-    mel_db = librosa.util.fix_length(mel_db, size=40, axis=0)
-    mel_db = librosa.util.fix_length(mel_db, size=40, axis=1)
+    mel = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=40)
+    mel_db = librosa.power_to_db(mel, ref=np.max)
     
     # ONNX入力形式に変換
+    # ★ librosa.fix_length は Cloud で壊れるので NumPy で強制リサイズ
+    mel_db = np.resize(mel_db, (40, 40))
+
     mel_db = mel_db.reshape(1, 1, 40, 40).astype(np.float32)
 
     # 推論
     inputs = {session.get_inputs()[0].name: mel_db}
     outputs = session.run(None, inputs)
     pred = np.argmax(outputs[0])
-    
+
     return EMOTIONS[pred]
 
 st.title("🎤 音声感情認識（ONNX版 / Streamlit Cloud対応）")
