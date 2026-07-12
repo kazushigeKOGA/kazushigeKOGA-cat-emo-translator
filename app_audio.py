@@ -2,44 +2,25 @@ import streamlit as st
 import numpy as np
 import librosa
 import onnxruntime as ort
-import subprocess
-import os
+import wave
 
 session = ort.InferenceSession("model_audio_emotion.onnx")
 
 EMOTIONS = ["Neutral", "Happy", "Sad", "Angry", "Fear", "Disgust", "Surprise"]
 
-def convert_to_pcm(input_path, output_path="converted.pcm"):
-    """Cloud で最も安定する音声変換：RAW PCM にする"""
-    try:
-        subprocess.run(
-            [
-                "ffmpeg", "-y",
-                "-i", input_path,
-                "-f", "s16le",   # RAW PCM
-                "-ac", "1",      # モノラル
-                "-ar", "16000",  # サンプリングレート
-                output_path
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True
-        )
-        return output_path
-    except Exception as e:
-        st.error(f"音声変換に失敗しました: {e}")
-        return None
+def load_wav(path):
+    """Python 標準 wave で WAV を読み込む（Cloud で唯一安定）"""
+    with wave.open(path, "rb") as wf:
+        sr = wf.getframerate()
+        n = wf.getnframes()
+        audio = wf.readframes(n)
 
-def load_pcm(path):
-    """RAW PCM を numpy で読み込む（librosa.load を使わない）"""
-    data = np.fromfile(path, dtype=np.int16).astype(np.float32)
-    if len(data) == 0:
-        raise ValueError("PCM データが空です")
-    data /= np.max(np.abs(data))  # 正規化
-    return data, 16000
+    y = np.frombuffer(audio, dtype=np.int16).astype(np.float32)
+    y /= np.max(np.abs(y))  # 正規化
+    return y, sr
 
 def predict_emotion(path):
-    y, sr = load_pcm(path)
+    y, sr = load_wav(path)
 
     mel = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=40)
     mel_db = librosa.power_to_db(mel, ref=np.max)
@@ -53,26 +34,21 @@ def predict_emotion(path):
 
     return EMOTIONS[pred]
 
-st.title("🎤 音声感情認識（ONNX版 / Streamlit Cloud対応）")
+st.title("🎤 音声感情認識（WAV専用 / Streamlit Cloud対応）")
 
 uploaded_file = st.file_uploader(
-    "音声ファイルをアップロードしてください（wav / m4a / mp3）",
-    type=["wav", "m4a", "mp3"]
+    "音声ファイルをアップロードしてください（wav のみ対応）",
+    type=["wav"]
 )
 
 if uploaded_file is not None:
-    raw_path = "uploaded.raw"
+    raw_path = "uploaded.wav"
     with open(raw_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
 
-    pcm_path = convert_to_pcm(raw_path)
+    st.audio(uploaded_file)
 
-    if pcm_path:
-        st.audio(uploaded_file)
-        emotion = predict_emotion(pcm_path)
-        st.success(f"判定された感情: **{emotion}**")
+    emotion = predict_emotion(raw_path)
+    st.success(f"判定された感情: **{emotion}**")
 
-    if os.path.exists(raw_path):
-        os.remove(raw_path)
-    if os.path.exists("converted.pcm"):
-        os.remove("converted.pcm")
+    os.remove(raw_path)
