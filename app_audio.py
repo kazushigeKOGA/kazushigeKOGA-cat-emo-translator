@@ -1,35 +1,41 @@
 import streamlit as st
-import torch
-import librosa
 import numpy as np
-from audio_model import AudioEmotionCNN
+import librosa
+import onnxruntime as ort
 
-# フォルダ名の順番に合わせてラベルを設定
-labels = ["affection", "angry", "hungry", "surprised", "happy", "relaxed", "sad"]
+# ONNXモデル読み込み
+session = ort.InferenceSession("model_audio_emotion.onnx")
 
-# モデル読み込み
-model = AudioEmotionCNN(num_classes=7)
-model.load_state_dict(torch.load("model_audio_emotion.pth", map_location="cpu"))
-model.eval()
+EMOTIONS = ["Neutral", "Happy", "Sad", "Angry", "Fear", "Disgust", "Surprise"]
 
-st.title("Cat Emotion Translator (Audio Version)")
+def predict_emotion(audio_path):
+    # 音声読み込み
+    y, sr = librosa.load(audio_path, sr=None)
+    
+    # メルスペクトログラム
+    mel = librosa.feature.melspectrogram(y=y, sr=sr)
+    mel_db = librosa.power_to_db(mel)
+    
+    # ONNX入力形式に変換
+    mel_db = mel_db.astype(np.float32)
+    mel_db = mel_db.reshape(1, 1, mel_db.shape[0], mel_db.shape[1])
 
-uploaded_file = st.file_uploader("猫の音声ファイルをアップロードしてください", type=["wav", "mp3", "m4a"])
+    # 推論
+    inputs = {session.get_inputs()[0].name: mel_db}
+    outputs = session.run(None, inputs)
+    pred = np.argmax(outputs[0])
 
-def extract_mfcc(file):
-    y, sr = librosa.load(file, sr=16000)
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
-    mfcc = librosa.util.fix_length(mfcc, size=40, axis=1)
-    mfcc = mfcc[:40, :40]
-    mfcc = torch.tensor(mfcc, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-    return mfcc
+    return EMOTIONS[pred]
+
+st.title("🎤 音声感情認識（ONNX版 / Streamlit Cloud対応）")
+
+uploaded_file = st.file_uploader("音声ファイルをアップロードしてください（wav）", type=["wav"])
 
 if uploaded_file is not None:
+    with open("uploaded.wav", "wb") as f:
+        f.write(uploaded_file.getbuffer())
+
     st.audio(uploaded_file)
 
-    mfcc = extract_mfcc(uploaded_file)
-    with torch.no_grad():
-        output = model(mfcc)
-        pred = torch.argmax(output, dim=1).item()
-
-    st.write("### 推定された感情：", labels[pred])
+    emotion = predict_emotion("uploaded.wav")
+    st.success(f"判定された感情: **{emotion}**")
